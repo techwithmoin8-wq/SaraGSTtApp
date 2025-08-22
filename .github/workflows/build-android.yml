@@ -11,30 +11,29 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
+      # Set up toolchains (no Gradle cache to avoid "no files matched" error)
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
       - name: Set up Flutter (stable)
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          cache: true
 
-      # Create a pristine Flutter app so Android configs are guaranteed correct
+      # Create a clean Flutter app so all android/ gradle files exist
       - name: Create pristine Flutter app
         run: |
           rm -rf sara_builder
           flutter create --platforms=android sara_builder
 
-      # Inject YOUR code into the clean app
-      - name: Inject code & deps
+      # Inject YOUR code & pubspec into the clean app
+      - name: Inject code & pubspec
         run: |
           cp pubspec.yaml sara_builder/pubspec.yaml
           mkdir -p sara_builder/lib
@@ -44,12 +43,7 @@ jobs:
         working-directory: sara_builder
         run: flutter pub get
 
-      - name: Flutter doctor (diagnostics)
-        working-directory: sara_builder
-        run: flutter doctor -v
-
-      # Build both debug (easy install) and release (optimized)
-      - name: Build debug APK
+      - name: Build debug APK (easiest to install)
         working-directory: sara_builder
         run: flutter build apk --debug
 
