@@ -4,43 +4,155 @@ import 'package:intl/intl.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
-void main() => runApp(const SaraApp());
+/* ======================= APP STATE (GLOBAL) ======================= */
 
-class SaraApp extends StatelessWidget {
-  const SaraApp({super.key});
+enum OrderStatus { open, inProgress, completed }
+
+class Order {
+  final String id;
+  final String customer;
+  int qty;
+  OrderStatus status;
+  final DateTime date;
+  DateTime? eta;
+
+  Order({
+    required this.id,
+    required this.customer,
+    required this.qty,
+    required this.status,
+    required this.date,
+    this.eta,
+  });
+}
+
+class StockItem {
+  final String name;
+  final String uom;
+  double qty;
+  double unitCost; // optional, for reference
+
+  StockItem({required this.name, required this.uom, required this.qty, this.unitCost = 0});
+}
+
+class AppState extends ChangeNotifier {
+  /* Orders */
+  final List<Order> orders = [
+    Order(id: "ORD-1001", customer: "Sanjay Traders", qty: 500, status: OrderStatus.open, date: DateTime(2024, 7, 1)),
+    Order(id: "ORD-1002", customer: "Akash Enterprises", qty: 750, status: OrderStatus.completed, date: DateTime(2024, 7, 1)),
+    Order(id: "ORD-1003", customer: "Mehta Distributors", qty: 250, status: OrderStatus.inProgress, date: DateTime(2024, 7, 2)),
+  ];
+
+  int get ordersOpen => orders.where((o) => o.status == OrderStatus.open).length;
+  int get ordersInProgress => orders.where((o) => o.status == OrderStatus.inProgress).length;
+  int get ordersCompleted => orders.where((o) => o.status == OrderStatus.completed).length;
+
+  void addOrder(String customer, int qty) {
+    final nextNum = orders.length + 1001;
+    orders.insert(
+      0,
+      Order(
+        id: "ORD-$nextNum",
+        customer: customer,
+        qty: qty,
+        status: OrderStatus.open,
+        date: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+  }
+
+  void updateOrderStatus(Order order, OrderStatus status) {
+    order.status = status;
+    notifyListeners();
+  }
+
+  /* Stock */
+  final List<StockItem> raw = [
+    StockItem(name: "Preforms", uom: "pcs", qty: 5000, unitCost: 5.2),
+    StockItem(name: "Caps", uom: "pcs", qty: 5000, unitCost: 0.8),
+    StockItem(name: "Labels", uom: "pcs", qty: 5000, unitCost: 0.5),
+  ];
+
+  final List<StockItem> finished = [
+    StockItem(name: "1L Water Bottle", uom: "pcs", qty: 1200),
+  ];
+
+  void inwardRaw({required String name, required String uom, required double qty, double? unitCost}) {
+    final key = name.trim().toLowerCase();
+    final idx = raw.indexWhere((r) => r.name.trim().toLowerCase() == key);
+    if (idx >= 0) {
+      raw[idx].qty += qty;
+      if (unitCost != null && unitCost > 0) raw[idx].unitCost = unitCost;
+    } else {
+      raw.add(StockItem(name: name.trim(), uom: uom.trim(), qty: qty, unitCost: unitCost ?? 0));
+    }
+    notifyListeners();
+  }
+}
+
+/* InheritedNotifier wrapper so every page can read AppState without packages */
+class AppScope extends InheritedNotifier<AppState> {
+  const AppScope({super.key, required AppState notifier, required Widget child})
+      : super(notifier: notifier, child: child);
+
+  static AppState of(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<AppScope>();
+    assert(scope != null, 'No AppScope found in context');
+    return scope!.notifier!;
+  }
+}
+
+/* ============================ APP ROOT ============================ */
+
+void main() => runApp(const SaraRoot());
+
+class SaraRoot extends StatefulWidget {
+  const SaraRoot({super.key});
+  @override
+  State<SaraRoot> createState() => _SaraRootState();
+}
+
+class _SaraRootState extends State<SaraRoot> {
+  final AppState state = AppState();
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Sara Industries – GST',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0B74B5),
-          brightness: Brightness.light,
-        ),
-        textTheme: GoogleFonts.interTextTheme(),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0B74B5),
-          foregroundColor: Colors.white,
-          elevation: 0,
-        ),
-        // ✅ Flutter 3.35 requires CardThemeData (not CardTheme)
-        cardTheme: const CardThemeData(
-          color: Colors.white,
-          elevation: 2,
-          shadowColor: Colors.black12,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(16)),
+    return AppScope(
+      notifier: state,
+      child: MaterialApp(
+        title: 'Sara Industries – GST',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFF0B74B5),
+            brightness: Brightness.light,
+          ),
+          textTheme: GoogleFonts.interTextTheme(),
+          appBarTheme: const AppBarTheme(
+            backgroundColor: Color(0xFF0B74B5),
+            foregroundColor: Colors.white,
+            elevation: 0,
+          ),
+          // Flutter 3.35 uses CardThemeData
+          cardTheme: const CardThemeData(
+            color: Colors.white,
+            elevation: 2,
+            shadowColor: Colors.black12,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
           ),
         ),
+        home: const LoginPage(),
       ),
-      home: const LoginPage(),
     );
   }
 }
 
-/* ---------------------------- LOGIN ---------------------------- */
+/* ============================== LOGIN ============================== */
+
 class LoginPage extends StatefulWidget { const LoginPage({super.key}); @override State<LoginPage> createState()=>_LoginPageState(); }
 class _LoginPageState extends State<LoginPage> {
   final userCtrl=TextEditingController(), passCtrl=TextEditingController(); String? err;
@@ -78,7 +190,8 @@ class _LoginPageState extends State<LoginPage> {
   );
 }
 
-/* ---------------------- DASHBOARD + TABS ----------------------- */
+/* ======================= DASHBOARD + TABS ======================= */
+
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
   @override
@@ -115,116 +228,124 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
-/* -------------------------- HOME TAB -------------------------- */
+/* ============================ HOME TAB ============================ */
+
 class HomeTab extends StatelessWidget {
   const HomeTab({super.key});
   @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
     final tab = DefaultTabController.of(context);
 
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
-            color: const Color(0xFF0B74B5),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Text("SARA INDUSTRIES",
-                    style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
-                SizedBox(height: 4),
-                Text("Total Sales", style: TextStyle(color: Colors.white70)),
-                SizedBox(height: 2),
-                Text("₹ 12,40,000",
-                    style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-              ],
-            ),
-          ),
-
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: GridView(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.4,
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              // Blue header
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
+                color: const Color(0xFF0B74B5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text("SARA INDUSTRIES",
+                        style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+                    SizedBox(height: 4),
+                    Text("Total Sales", style: TextStyle(color: Colors.white70)),
+                    SizedBox(height: 2),
+                    Text("₹ 12,40,000",
+                        style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+                  ],
+                ),
               ),
-              children: [
-                _DashTile(
-                  color: const Color(0xFF1E9E6A),
-                  icon: Icons.receipt_long,
-                  title: "Invoice\nManagement",
-                  onTap: () => tab?.animateTo(1),
+
+              // 2×2 tiles
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: GridView(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.4,
+                  ),
+                  children: [
+                    _DashTile(
+                      color: const Color(0xFF1E9E6A),
+                      icon: Icons.receipt_long,
+                      title: "Invoice\nManagement",
+                      onTap: () => tab?.animateTo(1),
+                    ),
+                    _DashTile(
+                      color: const Color(0xFFF39C12),
+                      icon: Icons.move_to_inbox,
+                      title: "Stock\nInward",
+                      onTap: () => tab?.animateTo(3),
+                    ),
+                    _DashTile(
+                      color: const Color(0xFF2D77EA),
+                      icon: Icons.bar_chart_rounded,
+                      title: "Accounts",
+                      onTap: () => tab?.animateTo(5),
+                    ),
+                    _DashTile(
+                      color: const Color(0xFF6C47C9),
+                      icon: Icons.warehouse_outlined,
+                      title: "Material\nManagement",
+                      onTap: () => tab?.animateTo(4),
+                    ),
+                  ],
                 ),
-                _DashTile(
-                  color: const Color(0xFFF39C12),
-                  icon: Icons.move_to_inbox,
-                  title: "Stock\nInward",
-                  onTap: () => tab?.animateTo(3),
+              ),
+
+              // Orange Order Status (linked to actual state)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF57C00),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                _DashTile(
-                  color: const Color(0xFF2D77EA),
-                  icon: Icons.bar_chart_rounded,
-                  title: "Accounts",
-                  onTap: () => tab?.animateTo(5),
+                child: Row(
+                  children: [
+                    _StatusPill(label: "Open", value: "${state.ordersOpen}", icon: Icons.water_drop),
+                    const SizedBox(width: 16),
+                    _StatusPill(label: "In Progress", value: "${state.ordersInProgress}", icon: Icons.local_shipping),
+                    const SizedBox(width: 16),
+                    _StatusPill(label: "Completed", value: "${state.ordersCompleted}", icon: Icons.verified),
+                  ],
                 ),
-                _DashTile(
-                  color: const Color(0xFF6C47C9),
-                  icon: Icons.warehouse_outlined,
-                  title: "Material\nManagement",
-                  onTap: () => tab?.animateTo(4),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Recent orders list (from state)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: state.orders.take(3).map((o) => _OrderCard(
+                    customer: o.customer,
+                    qty: o.qty,
+                    status: _statusText(o.status),
+                    orderDate: DateFormat('dd/MM/yyyy').format(o.date),
+                    inProgressDate: "", // timeline sample (optional)
+                    doneDate: o.status == OrderStatus.completed ? DateFormat('dd/MM/yyyy').format(o.date) : "—",
+                  )).toList(),
                 ),
-              ],
-            ),
+              ),
+
+              const SizedBox(height: 24),
+            ],
           ),
-
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF57C00),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: const [
-                _StatusPill(label: "Open", value: "50", icon: Icons.water_drop),
-                SizedBox(width: 16),
-                _StatusPill(label: "In Progress", value: "8", icon: Icons.local_shipping),
-                SizedBox(width: 16),
-                _StatusPill(label: "Completed", value: "10", icon: Icons.verified),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Column(
-              children: const [
-                _OrderCard(
-                  customer: "Sanjay Traders", qty: 500, status: "Open",
-                  orderDate: "01/07/2024", inProgressDate: "03/07/2024", doneDate: "04/07/2024",
-                ),
-                _OrderCard(
-                  customer: "Akash Enterprises", qty: 750, status: "Completed",
-                  orderDate: "01/07/2024", inProgressDate: "03/07/2024", doneDate: "05/07/2024",
-                ),
-                _OrderCard(
-                  customer: "Mehta Distributors", qty: 250, status: "In Progress",
-                  orderDate: "02/07/2024", inProgressDate: "03/07/2024", doneDate: "—",
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 24),
-        ],
-      ),
+        );
+      },
     );
   }
+
+  static String _statusText(OrderStatus s) =>
+      s == OrderStatus.open ? "Open" : s == OrderStatus.inProgress ? "In Progress" : "Completed";
 }
 
 class _DashTile extends StatelessWidget {
@@ -285,27 +406,20 @@ class _OrderCard extends StatelessWidget {
             Chip(label: Text(status, style: const TextStyle(color: Colors.white)), backgroundColor: _statusColor),
           ]),
           Text("$qty Water Bottles", style: const TextStyle(color: Colors.black54)),
-          const SizedBox(height: 8),
-          Row(children: [
-            _dot(Colors.blue), _line(Colors.orange),
-            _dot(status!="Open" ? Colors.orange : Colors.black12), _line(Colors.green),
-            _dot(status=="Completed" ? Colors.green : Colors.black12),
-          ]),
           const SizedBox(height: 6),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text(orderDate, style: const TextStyle(color: Colors.black54, fontSize: 12)),
-            Text(inProgressDate, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+            Text(inProgressDate.isEmpty ? "—" : inProgressDate, style: const TextStyle(color: Colors.black54, fontSize: 12)),
             Text(doneDate, style: const TextStyle(color: Colors.black54, fontSize: 12)),
           ]),
         ]),
       ),
     );
   }
-  Widget _dot(Color c) => Container(width: 16, height: 16, decoration: BoxDecoration(color: c, shape: BoxShape.circle));
-  Widget _line(Color c) => Expanded(child: Container(height: 4, color: c.withOpacity(0.6)));
 }
 
-/* ------------------------ INVOICE TAB ------------------------- */
+/* =========================== INVOICE TAB =========================== */
+
 class InvoiceTab extends StatefulWidget { const InvoiceTab({super.key}); @override State<InvoiceTab> createState()=>_InvoiceTabState(); }
 class _InvoiceTabState extends State<InvoiceTab> {
   String invNo="S/2025/001";
@@ -319,7 +433,6 @@ class _InvoiceTabState extends State<InvoiceTab> {
   double get cgst=>amount*0.09; double get sgst=>amount*0.09; double get total=>amount+cgst+sgst;
 
   void addRow(){ setState(()=>rows.add(InvRow("Water Bottle","373527",1,0))); }
-  void removeRow(int i){ setState(()=>rows.removeAt(i)); }
 
   Future<void> sharePdf() async {
     final doc=pw.Document(); final fmt=NumberFormat.currency(locale:"en_IN", symbol:"₹");
@@ -452,85 +565,175 @@ class _InvoiceTabState extends State<InvoiceTab> {
 }
 class InvRow{ String desc; String hsn; double qty; double rate; InvRow(this.desc,this.hsn,this.qty,this.rate); }
 
-/* ------------------------- ORDERS TAB ------------------------- */
+/* ============================ ORDERS TAB ============================ */
+
 class OrdersTab extends StatelessWidget {
   const OrdersTab({super.key});
+
   @override
-  Widget build(BuildContext c){
-    final orders=[
-      {"id":"ORD-1001","customer":"ABC Traders","qty":200,"status":"Open","date":"2025-08-10","eta":"2025-08-15"},
-      {"id":"ORD-1002","customer":"Sai Distributors","qty":350,"status":"In Progress","date":"2025-08-11","eta":"2025-08-16"},
-      {"id":"ORD-1003","customer":"City Mart","qty":150,"status":"Completed","date":"2025-08-08","eta":"2025-08-12"},
-    ];
-    Color chip(String s)=> s=="Open"?Colors.blue: s=="In Progress"?Colors.orange:Colors.green;
-    return ListView.builder(padding: const EdgeInsets.all(12), itemCount: orders.length, itemBuilder:(ctx,i){
-      final o=orders[i];
-      return Card(child: ListTile(
-        title: Text("${o["customer"]} • ${o["id"]}"),
-        subtitle: Text("Qty: ${o["qty"]} • Order: ${o["date"]} • ETA: ${o["eta"]}"),
-        trailing: Chip(label: Text(o["status"] as String, style: const TextStyle(color:Colors.white)), backgroundColor: chip(o["status"] as String)),
-      ));
-    });
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        return Scaffold(
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _showAddOrderDialog(context),
+            icon: const Icon(Icons.add),
+            label: const Text("New Order"),
+          ),
+          body: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: state.orders.length,
+            itemBuilder: (ctx, i) {
+              final o = state.orders[i];
+              return Card(
+                child: ListTile(
+                  title: Text("${o.customer} • ${o.id}"),
+                  subtitle: Text("Qty: ${o.qty} • Date: ${DateFormat('dd-MM-yyyy').format(o.date)}"),
+                  trailing: DropdownButton<OrderStatus>(
+                    value: o.status,
+                    underline: const SizedBox.shrink(),
+                    onChanged: (val) {
+                      if (val != null) state.updateOrderStatus(o, val);
+                    },
+                    items: const [
+                      DropdownMenuItem(value: OrderStatus.open, child: Text("Open")),
+                      DropdownMenuItem(value: OrderStatus.inProgress, child: Text("In Progress")),
+                      DropdownMenuItem(value: OrderStatus.completed, child: Text("Completed")),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  void _showAddOrderDialog(BuildContext context) {
+    final state = AppScope.of(context);
+    final nameCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController(text: "100");
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Add Order"),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Customer name")),
+          TextField(controller: qtyCtrl, decoration: const InputDecoration(labelText: "Quantity"), keyboardType: TextInputType.number),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          FilledButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              final qty = int.tryParse(qtyCtrl.text.trim()) ?? 0;
+              if (name.isNotEmpty && qty > 0) {
+                state.addOrder(name, qty);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Add"),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-/* -------------------------- STOCK TAB ------------------------ */
-class StockTab extends StatefulWidget { const StockTab({super.key}); @override State<StockTab> createState()=>_StockTabState(); }
-class _StockTabState extends State<StockTab> {
-  final raws=[{"name":"Preforms","uom":"pcs","qty":5000,"unitCost":5.2},
-              {"name":"Caps","uom":"pcs","qty":5000,"unitCost":0.8},
-              {"name":"Labels","uom":"pcs","qty":5000,"unitCost":0.5}];
-  final finished=[{"name":"1L Water Bottle","uom":"pcs","qty":1200,"unitCost":0.0}];
+/* ============================= STOCK TAB ============================= */
 
-  void addInwardDialog(){
-    final name=TextEditingController(); final uom=TextEditingController(text:"pcs");
-    final qty=TextEditingController(text:"0"); final unit=TextEditingController(text:"0");
-    showDialog(context: context, builder:(_)=>AlertDialog(
-      title: const Text("Add Inward"),
-      content: Column(mainAxisSize: MainAxisSize.min, children:[
-        TextField(controller:name, decoration: const InputDecoration(labelText:"Item name")),
-        TextField(controller:uom, decoration: const InputDecoration(labelText:"UOM")),
-        TextField(controller:qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText:"Qty")),
-        TextField(controller:unit, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText:"Unit cost (₹)")),
-      ]),
-      actions: [
-        TextButton(onPressed: ()=>Navigator.pop(context), child: const Text("Cancel")),
-        FilledButton(onPressed: (){
-          setState(()=> raws.add({"name":name.text,"uom":uom.text,
-            "qty":double.tryParse(qty.text)??0,"unitCost":double.tryParse(unit.text)??0}));
-          Navigator.pop(context);
-        }, child: const Text("Add"))
-      ],
-    ));
+class StockTab extends StatelessWidget {
+  const StockTab({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    return AnimatedBuilder(
+      animation: state,
+      builder: (context, _) {
+        return Scaffold(
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: () => _addInwardDialog(context),
+            icon: const Icon(Icons.add),
+            label: const Text("Add Inward"),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              children: [
+                const Text("Raw Materials", style: TextStyle(color: Colors.black54)),
+                Expanded(
+                  child: ListView(
+                    children: state.raw
+                        .map((r) => ListTile(
+                              title: Text(r.name),
+                              subtitle: Text("Qty: ${r.qty.toStringAsFixed(0)} ${r.uom}"),
+                              trailing: Text(r.unitCost > 0 ? "₹${r.unitCost}" : ""),
+                            ))
+                        .toList(),
+                  ),
+                ),
+                const Divider(),
+                const Text("Finished Goods", style: TextStyle(color: Colors.black54)),
+                Expanded(
+                  child: ListView(
+                    children: state.finished
+                        .map((f) => ListTile(
+                              title: Text(f.name),
+                              subtitle: Text("Qty: ${f.qty.toStringAsFixed(0)} ${f.uom}"),
+                            ))
+                        .toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
-  @override
-  Widget build(BuildContext c)=>Scaffold(
-    floatingActionButton: FloatingActionButton.extended(
-      onPressed:addInwardDialog, icon: const Icon(Icons.add), label: const Text("Add Inward")),
-    body: Padding(padding: const EdgeInsets.all(12), child: Column(children:[
-      const Text("Raw Materials", style: TextStyle(color: Colors.black54)),
-      Expanded(child: ListView(
-        children: raws.map((r)=> ListTile(
-          title: Text(r["name"].toString()),
-          subtitle: Text("Qty: ${r["qty"]} ${r["uom"]}"),
-          trailing: Text("₹${r["unitCost"]}"),
-        )).toList(),
-      )),
-      const Divider(),
-      const Text("Finished Goods", style: TextStyle(color: Colors.black54)),
-      Expanded(child: ListView(
-        children: finished.map((f)=> ListTile(
-          title: Text(f["name"].toString()),
-          subtitle: Text("Qty: ${f["qty"]} ${f["uom"]}"),
-        )).toList(),
-      )),
-      const SizedBox(height:12),
-    ])),
-  );
+  void _addInwardDialog(BuildContext context) {
+    final state = AppScope.of(context);
+    final name = TextEditingController();
+    final uom = TextEditingController(text: "pcs");
+    final qty = TextEditingController(text: "0");
+    final unit = TextEditingController(text: "0");
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Add Inward"),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: name, decoration: const InputDecoration(labelText: "Item name")),
+          TextField(controller: uom, decoration: const InputDecoration(labelText: "UOM")),
+          TextField(controller: qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Qty")),
+          TextField(controller: unit, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Unit cost (₹)")),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          FilledButton(
+            onPressed: () {
+              final n = name.text.trim();
+              final u = uom.text.trim().isEmpty ? "pcs" : uom.text.trim();
+              final q = double.tryParse(qty.text.trim()) ?? 0;
+              final c = double.tryParse(unit.text.trim());
+              if (n.isNotEmpty && q > 0) {
+                state.inwardRaw(name: n, uom: u, qty: q, unitCost: c);
+                Navigator.pop(context);
+              }
+            },
+            child: const Text("Add"),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-/* ----------------------- MATERIALS TAB ----------------------- */
+/* =========================== MATERIALS TAB =========================== */
+
 class MaterialsTab extends StatelessWidget { const MaterialsTab({super.key});
   @override Widget build(BuildContext c){
     const preform=5.2, cap=0.8, label=0.5, utilities=0.35, labour=0.50;
@@ -551,7 +754,8 @@ class MaterialsTab extends StatelessWidget { const MaterialsTab({super.key});
   }
 }
 
-/* ------------------------ ACCOUNTS TAB ----------------------- */
+/* ============================ ACCOUNTS TAB ============================ */
+
 class AccountsTab extends StatelessWidget { const AccountsTab({super.key});
   @override Widget build(BuildContext c){
     final payments=[
