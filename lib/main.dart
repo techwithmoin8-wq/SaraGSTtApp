@@ -16,7 +16,7 @@ class SaraApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0B74B5), // brand blue
+          seedColor: const Color(0xFF0B74B5),
           brightness: Brightness.light,
         ),
         textTheme: GoogleFonts.interTextTheme(),
@@ -25,10 +25,14 @@ class SaraApp extends StatelessWidget {
           foregroundColor: Colors.white,
           elevation: 0,
         ),
-        cardTheme: CardThemedata(
+        // ✅ Flutter 3.35 requires CardThemeData (not CardTheme)
+        cardTheme: const CardThemeData(
           color: Colors.white,
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shadowColor: Colors.black12,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(16)),
+          ),
         ),
       ),
       home: const LoginPage(),
@@ -47,7 +51,7 @@ class _LoginPageState extends State<LoginPage> {
         gradient: LinearGradient(colors:[Color(0xFFE0FBFC),Color(0xFFD1FAE5)],
           begin: Alignment.topLeft, end: Alignment.bottomRight),
       ),
-      child: Center(child: Card(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Center(child: Card(
         child: Padding(padding: const EdgeInsets.all(24),
           child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 360),
             child: Column(mainAxisSize: MainAxisSize.min, children:[
@@ -98,10 +102,10 @@ class DashboardPage extends StatelessWidget {
         ),
         body: const TabBarView(
           children: [
-            HomeTab(),     // colorful dashboard (matches sample image)
-            InvoiceTab(),  // working invoice + Share PDF
+            HomeTab(),
+            InvoiceTab(),
             OrdersTab(),
-            StockTab(),    // “Add Inward” button
+            StockTab(),
             MaterialsTab(),
             AccountsTab(),
           ],
@@ -121,7 +125,6 @@ class HomeTab extends StatelessWidget {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // Blue header with title + total sales
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 22, 20, 18),
@@ -140,7 +143,6 @@ class HomeTab extends StatelessWidget {
             ),
           ),
 
-          // 2×2 colored tiles
           Padding(
             padding: const EdgeInsets.all(16),
             child: GridView(
@@ -178,7 +180,6 @@ class HomeTab extends StatelessWidget {
             ),
           ),
 
-          // Orange “Order Status” strip
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(16),
@@ -199,7 +200,6 @@ class HomeTab extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Customer order list like sample
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
@@ -227,7 +227,6 @@ class HomeTab extends StatelessWidget {
   }
 }
 
-// helpers for HomeTab
 class _DashTile extends StatelessWidget {
   final Color color; final IconData icon; final String title; final VoidCallback onTap;
   const _DashTile({required this.color, required this.icon, required this.title, required this.onTap, super.key});
