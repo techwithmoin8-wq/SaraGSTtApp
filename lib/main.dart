@@ -48,16 +48,16 @@ class Txn {
 class AppState extends ChangeNotifier {
   /* Orders */
   final List<Order> orders = [
-    Order(id: "ORD-1001", customer: "Sanjay Traders", qty: 500, status: OrderStatus.open, date: DateTime(2024, 7, 1)),
+    Order(id: "ORD-1001", customer: "Sanjay Traders", qty: 500, status: OrderStatus.open,       date: DateTime(2024, 7, 1)),
     Order(id: "ORD-1002", customer: "Akash Enterprises", qty: 750, status: OrderStatus.completed, date: DateTime(2024, 7, 1)),
     Order(id: "ORD-1003", customer: "Mehta Distributors", qty: 250, status: OrderStatus.inProgress, date: DateTime(2024, 7, 2)),
   ];
-  int get ordersOpen => orders.where((o) => o.status == OrderStatus.open).length;
-  int get ordersInProgress => orders.where((o) => o.status == OrderStatus.inProgress).length;
-  int get ordersCompleted => orders.where((o) => o.status == OrderStatus.completed).length;
-  int get openQty => orders.where((o) => o.status == OrderStatus.open).fold(0, (s, o) => s + o.qty);
-  int get inProgQty => orders.where((o) => o.status == OrderStatus.inProgress).fold(0, (s, o) => s + o.qty);
-  int get doneQty => orders.where((o) => o.status == OrderStatus.completed).fold(0, (s, o) => s + o.qty);
+  int get ordersOpen        => orders.where((o) => o.status == OrderStatus.open).length;
+  int get ordersInProgress  => orders.where((o) => o.status == OrderStatus.inProgress).length;
+  int get ordersCompleted   => orders.where((o) => o.status == OrderStatus.completed).length;
+  int get openQty           => orders.where((o) => o.status == OrderStatus.open).fold(0, (s, o) => s + o.qty);
+  int get inProgQty         => orders.where((o) => o.status == OrderStatus.inProgress).fold(0, (s, o) => s + o.qty);
+  int get doneQty           => orders.where((o) => o.status == OrderStatus.completed).fold(0, (s, o) => s + o.qty);
 
   void addOrder(String customer, int qty) {
     final next = orders.length + 1001;
@@ -74,21 +74,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateOrderStatus(Order o, OrderStatus s) {
-    o.status = s;
-    notifyListeners();
-  }
-
-  /* Stock (inward merging keeps previous quantity) */
+  /* Stock */
   final List<StockItem> raw = [
     StockItem(name: "Preforms", uom: "pcs", qty: 5000, unitCost: 5.2),
-    StockItem(name: "Caps", uom: "pcs", qty: 5000, unitCost: 0.8),
-    StockItem(name: "Labels", uom: "pcs", qty: 5000, unitCost: 0.5),
+    StockItem(name: "Caps",     uom: "pcs", qty: 5000, unitCost: 0.8),
+    StockItem(name: "Labels",   uom: "pcs", qty: 5000, unitCost: 0.5),
   ];
   final List<StockItem> finished = [
     StockItem(name: "1L Water Bottle", uom: "pcs", qty: 1200),
   ];
 
+  // Merge inward by name
   void inwardRaw({required String name, required String uom, required double qty, double? unitCost}) {
     final key = name.trim().toLowerCase();
     final i = raw.indexWhere((r) => r.name.trim().toLowerCase() == key);
@@ -101,13 +97,44 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---- Production movement when an order toggles Completed ----
+  // Simple BOM: 1 Preform + 1 Cap + 1 Label => 1 Finished Bottle
+  void _applyCompletionDelta(int qty, int sign) {
+    // finished
+    final fi = finished.indexWhere((f) => f.name.toLowerCase() == "1l water bottle");
+    if (fi >= 0) {
+      finished[fi].qty = (finished[fi].qty + sign * qty).clamp(0, double.infinity);
+    }
+    // raw
+    void consume(String name) {
+      final i = raw.indexWhere((r) => r.name.toLowerCase() == name.toLowerCase());
+      if (i >= 0) {
+        raw[i].qty = (raw[i].qty - sign * qty).clamp(0, double.infinity);
+      }
+    }
+    consume("Preforms");
+    consume("Caps");
+    consume("Labels");
+  }
+
+  void updateOrderStatus(Order o, OrderStatus newStatus) {
+    // If moving to completed, apply +qty; if leaving completed, revert -qty
+    if (o.status != OrderStatus.completed && newStatus == OrderStatus.completed) {
+      _applyCompletionDelta(o.qty, +1);
+    } else if (o.status == OrderStatus.completed && newStatus != OrderStatus.completed) {
+      _applyCompletionDelta(o.qty, -1);
+    }
+    o.status = newStatus;
+    notifyListeners();
+  }
+
   /* Material unit-cost calculator */
   final List<CostPart> costParts = [
-    CostPart("Preform", 5.20),
-    CostPart("Cap", 0.80),
-    CostPart("Label", 0.50),
+    CostPart("Preform",   5.20),
+    CostPart("Cap",       0.80),
+    CostPart("Label",     0.50),
     CostPart("Utilities", 0.35),
-    CostPart("Labour", 0.50),
+    CostPart("Labour",    0.50),
   ];
   double get unitCostTotal => costParts.fold(0.0, (s, c) => s + c.value);
   void addCostPart(String name, double value) { costParts.add(CostPart(name, value)); notifyListeners(); }
@@ -116,8 +143,8 @@ class AppState extends ChangeNotifier {
 
   /* Accounts */
   final List<Txn> txns = [
-    Txn(date: DateTime.now(), isCredit: true, amount: 1000, note: "Test Depot"),
-    Txn(date: DateTime.now().subtract(const Duration(days: 1)), isCredit: false, amount: 800, note: "Caps purchase"),
+    Txn(date: DateTime.now(),                          isCredit: true,  amount: 1000, note: "Test Depot"),
+    Txn(date: DateTime.now().subtract(const Duration(days: 1)), isCredit: false, amount: 800,  note: "Caps purchase"),
   ];
   void addTxn({required bool isCredit, required double amount, required String note}) {
     txns.insert(0, Txn(date: DateTime.now(), isCredit: isCredit, amount: amount, note: note));
@@ -252,14 +279,12 @@ class HomeTab extends StatelessWidget {
       animation: state,
       builder: (_, __) => SingleChildScrollView(
         child: Column(children: [
+          // Clean header (removed misleading Total Sales)
           Container(
             width: double.infinity, padding: const EdgeInsets.fromLTRB(20,22,20,18),
             color: const Color(0xFF0B74B5),
-            child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text("SARA INDUSTRIES", style: TextStyle(color:Colors.white,fontSize:24,fontWeight:FontWeight.w800)),
-              SizedBox(height:4), Text("Total Sales", style: TextStyle(color:Colors.white70)),
-              SizedBox(height:2), Text("₹ 12,40,000", style: TextStyle(color:Colors.white,fontSize:28,fontWeight:FontWeight.bold)),
-            ]),
+            child: const Text("SARA INDUSTRIES",
+              style: TextStyle(color:Colors.white,fontSize:24,fontWeight:FontWeight.w800)),
           ),
 
           // tiles
@@ -379,14 +404,16 @@ class _InvoiceTabState extends State<InvoiceTab> {
   DateTime date = DateTime.now();
   final List<InvRow> rows = [InvRow()];
 
-  // FIX: return double (not num) so math is typed for Dart/Flutter 3.35
-  double _n(TextEditingController c){
-    final v = double.tryParse(c.text.trim());
-    return v ?? 0.0;
-  }
+  // GST %
+  final cgstCtrl = TextEditingController(text: "9");
+  final sgstCtrl = TextEditingController(text: "9");
+
+  double _n(TextEditingController c){ final v = double.tryParse(c.text.trim()); return v ?? 0.0; }
 
   double get amount => rows.fold(0.0,(s,r)=> s + _n(r.qty)*_n(r.rate));
-  double get cgst => amount*0.09; double get sgst => amount*0.09; double get total => amount+cgst+sgst;
+  double get cgst   => amount*(_n(cgstCtrl)/100);
+  double get sgst   => amount*(_n(sgstCtrl)/100);
+  double get total  => amount+cgst+sgst;
 
   void _addRow(){ setState(()=> rows.add(InvRow())); }
   void _delRow(int i){ setState(()=> rows.removeAt(i)); }
@@ -410,8 +437,8 @@ class _InvoiceTabState extends State<InvoiceTab> {
       pw.SizedBox(height:8),
       pw.Row(mainAxisAlignment: pw.MainAxisAlignment.end, children:[ pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children:[
         pw.Text("Subtotal: ${fmt.format(amount)}"),
-        pw.Text("CGST @ 9%: ${fmt.format(cgst)}"),
-        pw.Text("SGST @ 9%: ${fmt.format(sgst)}"),
+        pw.Text("CGST @ ${cgstCtrl.text}%: ${fmt.format(cgst)}"),
+        pw.Text("SGST @ ${sgstCtrl.text}%: ${fmt.format(sgst)}"),
         pw.Text("Total: ${fmt.format(total)}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
       ])]),
     ])));
@@ -433,35 +460,15 @@ class _InvoiceTabState extends State<InvoiceTab> {
           child: ListView(
             children: [
               // Header grid
-              LayoutBuilder(builder: (ctx, cons){
-                final isWide = cons.maxWidth > 540;
-                return isWide
-                ? Row(children: [
-                    Expanded(child: TextField(controller: invNo, decoration: const InputDecoration(labelText:"Invoice No"), onChanged: (_)=> setState((){}))),
-                    const SizedBox(width:12),
-                    Expanded(child: TextField(readOnly: true, decoration: InputDecoration(labelText:"Date", hintText: DateFormat('dd-MM-yyyy').format(date)))),
-                  ])
-                : Column(children: [
-                    TextField(controller: invNo, decoration: const InputDecoration(labelText:"Invoice No"), onChanged: (_)=> setState((){})),
-                    const SizedBox(height:8),
-                    TextField(readOnly: true, decoration: InputDecoration(labelText:"Date", hintText: DateFormat('dd-MM-yyyy').format(date))),
-                  ]);
-              }),
+              _twoCol(
+                TextField(controller: invNo, decoration: const InputDecoration(labelText:"Invoice No"), onChanged: (_)=> setState((){})),
+                TextField(readOnly: true, decoration: InputDecoration(labelText:"Date", hintText: DateFormat('dd-MM-yyyy').format(date))),
+              ),
               const SizedBox(height:8),
-              LayoutBuilder(builder: (ctx, cons){
-                final isWide = cons.maxWidth > 540;
-                return isWide
-                ? Row(children: [
-                    Expanded(child: TextField(controller: buyerName, decoration: const InputDecoration(labelText:"Buyer Name"), onChanged: (_)=> setState((){}))),
-                    const SizedBox(width:12),
-                    Expanded(child: TextField(controller: buyerGstin, decoration: const InputDecoration(labelText:"Buyer GSTIN"), onChanged: (_)=> setState((){}))),
-                  ])
-                : Column(children: [
-                    TextField(controller: buyerName, decoration: const InputDecoration(labelText:"Buyer Name"), onChanged: (_)=> setState((){})),
-                    const SizedBox(height:8),
-                    TextField(controller: buyerGstin, decoration: const InputDecoration(labelText:"Buyer GSTIN"), onChanged: (_)=> setState((){})),
-                  ]);
-              }),
+              _twoCol(
+                TextField(controller: buyerName, decoration: const InputDecoration(labelText:"Buyer Name"), onChanged: (_)=> setState((){})),
+                TextField(controller: buyerGstin, decoration: const InputDecoration(labelText:"Buyer GSTIN"), onChanged: (_)=> setState((){})),
+              ),
               const SizedBox(height:8),
               TextField(controller: buyerAddr, decoration: const InputDecoration(labelText:"Buyer Address"), onChanged: (_)=> setState((){})),
               const SizedBox(height:12),
@@ -486,19 +493,25 @@ class _InvoiceTabState extends State<InvoiceTab> {
               ),
 
               const SizedBox(height:8),
+              // GST %
+              _twoCol(
+                TextField(controller: cgstCtrl, keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText:"CGST %"), onChanged: (_)=> setState((){})),
+                TextField(controller: sgstCtrl, keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText:"SGST %"), onChanged: (_)=> setState((){})),
+              ),
+
+              const SizedBox(height:8),
               // Totals card
               Card(child: Padding(
                 padding: const EdgeInsets.all(12),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "Amount: ₹${amount.toStringAsFixed(2)}   "
-                    "CGST: ₹${cgst.toStringAsFixed(2)}   "
-                    "SGST: ₹${sgst.toStringAsFixed(2)}   "
-                    "Total: ₹${total.toStringAsFixed(2)}",
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text("Subtotal: ₹${amount.toStringAsFixed(2)}"),
+                  Text("CGST (${cgstCtrl.text}%): ₹${cgst.toStringAsFixed(2)}"),
+                  Text("SGST (${sgstCtrl.text}%): ₹${sgst.toStringAsFixed(2)}"),
+                  const SizedBox(height: 4),
+                  Text("Grand Total: ₹${total.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+                ]),
               )),
             ],
           ),
@@ -507,19 +520,31 @@ class _InvoiceTabState extends State<InvoiceTab> {
     );
   }
 
+  Widget _twoCol(Widget a, Widget b){
+    return LayoutBuilder(builder: (ctx, cons){
+      final isWide = cons.maxWidth > 540;
+      return isWide
+        ? Row(children: [ Expanded(child:a), const SizedBox(width:12), Expanded(child:b) ])
+        : Column(children: [ a, const SizedBox(height:8), b ]);
+    });
+  }
+
   Widget _itemRow(int i){
     final r = rows[i];
-    final double amt = _n(r.qty) * _n(r.rate); // explicit double
+    final double amt = _n(r.qty) * _n(r.rate);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(children: [
         Expanded(flex:32, child: TextField(controller:r.desc, decoration: const InputDecoration(isDense:true, labelText:""))),
         const SizedBox(width:6),
-        Expanded(flex:14, child: TextField(controller:r.hsn, textAlign: TextAlign.center, decoration: const InputDecoration(isDense:true, labelText:""), onChanged:(_)=>setState((){}))),
+        Expanded(flex:14, child: TextField(controller:r.hsn, textAlign: TextAlign.center,
+          decoration: const InputDecoration(isDense:true, labelText:""), onChanged:(_)=>setState((){}))),
         const SizedBox(width:6),
-        Expanded(flex:12, child: TextField(controller:r.qty, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(isDense:true, labelText:""), onChanged:(_)=>setState((){}))),
+        Expanded(flex:12, child: TextField(controller:r.qty, keyboardType: TextInputType.number,
+          textAlign: TextAlign.center, decoration: const InputDecoration(isDense:true, labelText:""), onChanged:(_)=>setState((){}))),
         const SizedBox(width:6),
-        Expanded(flex:12, child: TextField(controller:r.rate, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: const InputDecoration(isDense:true, labelText:""), onChanged:(_)=>setState((){}))),
+        Expanded(flex:12, child: TextField(controller:r.rate, keyboardType: TextInputType.number,
+          textAlign: TextAlign.center, decoration: const InputDecoration(isDense:true, labelText:""), onChanged:(_)=>setState((){}))),
         const SizedBox(width:6),
         Expanded(flex:14, child: Text("₹${amt.toStringAsFixed(2)}", textAlign: TextAlign.end)),
         IconButton(onPressed: ()=>_delRow(i), icon: const Icon(Icons.delete_outline)),
@@ -657,26 +682,27 @@ class MaterialsTab extends StatelessWidget {
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (_, i){
                 final cp = s.costParts[i];
-                final name=TextEditingController(text: cp.name);
-                final val =TextEditingController(text: cp.value.toStringAsFixed(2));
-                return ListTile(
-                  title: Row(children:[
-                    Expanded(child: TextField(controller:name, decoration: const InputDecoration(labelText:"Item"))),
-                    const SizedBox(width: 8),
-                    SizedBox(width: 120, child: TextField(controller:val, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText:"Cost (₹)"))),
-                  ]),
-                  trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: ()=> s.deleteCostPart(i)),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                  onLongPress: (){
-                    final v = double.tryParse(val.text.trim()) ?? cp.value;
-                    s.updateCostPart(i, name.text.trim().isEmpty? cp.name: name.text.trim(), v);
-                  },
-                );
+                return Row(children: [
+                  Expanded(child: TextField(
+                    controller: TextEditingController(text: cp.name),
+                    decoration: const InputDecoration(labelText:"Item"),
+                    onChanged: (v)=> s.updateCostPart(i, v.trim().isEmpty? cp.name : v.trim(), cp.value),
+                  )),
+                  const SizedBox(width: 8),
+                  SizedBox(width: 120, child: TextField(
+                    controller: TextEditingController(text: cp.value.toStringAsFixed(2)),
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText:"Cost (₹)"),
+                    onChanged: (v)=> s.updateCostPart(i, cp.name, double.tryParse(v.trim()) ?? cp.value),
+                  )),
+                  IconButton(icon: const Icon(Icons.delete_outline), onPressed: ()=> s.deleteCostPart(i)),
+                ]);
               },
             )),
             Card(child: Padding(
               padding: const EdgeInsets.all(12),
-              child: Text("Grand Total (per bottle): ${cur.format(s.unitCostTotal)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+              child: Text("Grand Total (per bottle): ${cur.format(s.unitCostTotal)}",
+                style: const TextStyle(fontWeight: FontWeight.w700)),
             )),
             const SizedBox(height: 80),
           ]),
@@ -707,8 +733,9 @@ class MaterialsTab extends StatelessWidget {
 
 /* ================================ ACCOUNTS ================================ */
 
-class AccountsTab extends StatelessWidget {
-  const AccountsTab({super.key});
+class AccountsTab extends StatefulWidget { const AccountsTab({super.key}); @override State<AccountsTab> createState()=>_AccountsTabState(); }
+class _AccountsTabState extends State<AccountsTab> {
+  DateTime? from, to;
   @override
   Widget build(BuildContext context) {
     final s = AppScope.of(context); final cur = NumberFormat.currency(locale: "en_IN", symbol: "₹");
@@ -716,10 +743,20 @@ class AccountsTab extends StatelessWidget {
       animation: s,
       builder: (_, __) {
         final sums = s.periodSums();
+        final filtered = s.txns.where((t){
+          final d = DateTime(t.date.year, t.date.month, t.date.day);
+          final okFrom = from==null || !d.isBefore(DateTime(from!.year,from!.month,from!.day));
+          final okTo   = to==null   || !d.isAfter(DateTime(to!.year,to!.month,to!.day));
+          return okFrom && okTo;
+        }).toList();
+        final double fCredit = filtered.where((t)=>t.isCredit).fold(0.0,(s,t)=>s+t.amount);
+        final double fDebit  = filtered.where((t)=>!t.isCredit).fold(0.0,(s,t)=>s+t.amount);
+
         return Scaffold(
           floatingActionButton: FloatingActionButton.extended(onPressed: ()=>_addTxn(context), icon: const Icon(Icons.add), label: const Text("Add Entry")),
           body: Column(children: [
             const SizedBox(height:8),
+            // Quick summaries
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -729,11 +766,47 @@ class AccountsTab extends StatelessWidget {
                 _sumCard("Month",  sums["Month"]!, cur),
               ]),
             ),
+            const SizedBox(height: 8),
+            // Date filter row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(children: [
+                Expanded(child: OutlinedButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(now.year+1), initialDate: from ?? now);
+                    if(picked!=null) setState(()=> from = picked);
+                  },
+                  child: Text(from==null ? "From date" : DateFormat('dd-MM-yyyy').format(from!)),
+                )),
+                const SizedBox(width: 8),
+                Expanded(child: OutlinedButton(
+                  onPressed: () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(context: context, firstDate: DateTime(2020), lastDate: DateTime(now.year+1), initialDate: to ?? now);
+                    if(picked!=null) setState(()=> to = picked);
+                  },
+                  child: Text(to==null ? "To date" : DateFormat('dd-MM-yyyy').format(to!)),
+                )),
+                IconButton(onPressed: ()=> setState(()=> {from=null, to=null}), icon: const Icon(Icons.clear)),
+              ]),
+            ),
+            // Filtered totals
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text("Selected: Credit ${cur.format(fCredit)} • Debit ${cur.format(fDebit)} • Net ${cur.format(fCredit-fDebit)}",
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ),
             const Divider(height:1),
+
+            // Entries
             Expanded(child: ListView.separated(
-              itemCount: s.txns.length,
+              itemCount: filtered.length,
               separatorBuilder:(_,__)=> const Divider(height:1),
-              itemBuilder:(_,i){ final t=s.txns[i];
+              itemBuilder:(_,i){ final t=filtered[i];
                 return ListTile(
                   leading: Icon(t.isCredit? Icons.trending_up: Icons.trending_down,
                     color: t.isCredit? Colors.green: Colors.red),
