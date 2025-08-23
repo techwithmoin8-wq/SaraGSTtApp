@@ -157,7 +157,7 @@ class _SaraAppState extends State<SaraApp>{
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0B74B5)),
           textTheme: GoogleFonts.interTextTheme(),
           appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF0B74B5), foregroundColor: Colors.white),
-          cardTheme: const CardTheme( // ✅ correct type for ThemeData.cardTheme
+          cardTheme: const CardThemeData( // ✅ Flutter 3.35 expects CardThemeData
             color: Colors.white,
             elevation: 2,
             shadowColor: Colors.black12,
@@ -247,7 +247,7 @@ class HomeTab extends StatelessWidget{
             _DashTile(color: const Color(0xFF6C47C9), icon: Icons.warehouse_outlined, title:"Material\nManagement", onTap:()=>tabs?.animateTo(4)),
           ],
         )),
-        // Orange status bar (no overlap, shows orders + bottles)
+        // Orange status bar (wrap to avoid overlap)
         Container(margin: const EdgeInsets.symmetric(horizontal:16), padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: const Color(0xFFF57C00), borderRadius: BorderRadius.circular(16)),
           child: Wrap(spacing:16, runSpacing:8, children: [
