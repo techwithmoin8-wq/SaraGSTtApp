@@ -14,7 +14,13 @@ class Order {
   int qty;
   OrderStatus status;
   final DateTime date;
-  Order({required this.id, required this.customer, required this.qty, required this.status, required this.date});
+  Order({
+    required this.id,
+    required this.customer,
+    required this.qty,
+    required this.status,
+    required this.date,
+  });
 }
 
 class StockItem {
@@ -33,7 +39,7 @@ class CostPart {
 
 class Txn {
   final DateTime date;
-  final bool isCredit;
+  final bool isCredit; // true=in, false=out
   final double amount;
   final String note;
   Txn({required this.date, required this.isCredit, required this.amount, required this.note});
@@ -52,12 +58,26 @@ class AppState extends ChangeNotifier {
   int get openQty => orders.where((o) => o.status == OrderStatus.open).fold(0, (s, o) => s + o.qty);
   int get inProgQty => orders.where((o) => o.status == OrderStatus.inProgress).fold(0, (s, o) => s + o.qty);
   int get doneQty => orders.where((o) => o.status == OrderStatus.completed).fold(0, (s, o) => s + o.qty);
+
   void addOrder(String customer, int qty) {
     final next = orders.length + 1001;
-    orders.insert(0, Order(id: "ORD-$next", customer: customer, qty: qty, status: OrderStatus.open, date: DateTime.now()));
+    orders.insert(
+      0,
+      Order(
+        id: "ORD-$next",
+        customer: customer,
+        qty: qty,
+        status: OrderStatus.open,
+        date: DateTime.now(),
+      ),
+    );
     notifyListeners();
   }
-  void updateOrderStatus(Order o, OrderStatus s) { o.status = s; notifyListeners(); }
+
+  void updateOrderStatus(Order o, OrderStatus s) {
+    o.status = s;
+    notifyListeners();
+  }
 
   /* Stock (inward merging keeps previous quantity) */
   final List<StockItem> raw = [
@@ -65,7 +85,10 @@ class AppState extends ChangeNotifier {
     StockItem(name: "Caps", uom: "pcs", qty: 5000, unitCost: 0.8),
     StockItem(name: "Labels", uom: "pcs", qty: 5000, unitCost: 0.5),
   ];
-  final List<StockItem> finished = [ StockItem(name: "1L Water Bottle", uom: "pcs", qty: 1200) ];
+  final List<StockItem> finished = [
+    StockItem(name: "1L Water Bottle", uom: "pcs", qty: 1200),
+  ];
+
   void inwardRaw({required String name, required String uom, required double qty, double? unitCost}) {
     final key = name.trim().toLowerCase();
     final i = raw.indexWhere((r) => r.name.trim().toLowerCase() == key);
@@ -103,16 +126,19 @@ class AppState extends ChangeNotifier {
   Map<String, Map<String, double>> periodSums() {
     double cD=0,dD=0,cW=0,dW=0,cM=0,dM=0;
     final now=DateTime.now(), sod=DateTime(now.year,now.month,now.day),
-      sow=sod.subtract(Duration(days:sod.weekday-1)), som=DateTime(now.year,now.month,1);
+          sow=sod.subtract(Duration(days:sod.weekday-1)), som=DateTime(now.year,now.month,1);
     for(final t in txns){
       final d=DateTime(t.date.year,t.date.month,t.date.day);
-      bool td = !d.isBefore(sod), wk=!d.isBefore(sow), mo=!d.isBefore(som);
+      final td=!d.isBefore(sod), wk=!d.isBefore(sow), mo=!d.isBefore(som);
       if(td){ t.isCredit? cD+=t.amount : dD+=t.amount; }
       if(wk){ t.isCredit? cW+=t.amount : dW+=t.amount; }
       if(mo){ t.isCredit? cM+=t.amount : dM+=t.amount; }
     }
-    return {"Today":{"Credit":cD,"Debit":dD,"Net":cD-dD}, "Week":{"Credit":cW,"Debit":dW,"Net":cW-dW},
-            "Month":{"Credit":cM,"Debit":dM,"Net":cM-dM}};
+    return {
+      "Today": {"Credit": cD, "Debit": dD, "Net": cD-dD},
+      "Week":  {"Credit": cW, "Debit": dW, "Net": cW-dW},
+      "Month": {"Credit": cM, "Debit": dM, "Net": cM-dM},
+    };
   }
 }
 
@@ -252,7 +278,7 @@ class HomeTab extends StatelessWidget {
             ),
           ),
 
-          // orange bar — now WRAPs (no overlap) and shows orders + bottles
+          // orange bar — Wrap to avoid overlap; shows orders + bottles
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 16),
             padding: const EdgeInsets.all(12),
@@ -353,7 +379,12 @@ class _InvoiceTabState extends State<InvoiceTab> {
   DateTime date = DateTime.now();
   final List<InvRow> rows = [InvRow()];
 
-  num _n(TextEditingController c){ final v = double.tryParse(c.text.trim()); return v??0; }
+  // FIX: return double (not num) so math is typed for Dart/Flutter 3.35
+  double _n(TextEditingController c){
+    final v = double.tryParse(c.text.trim());
+    return v ?? 0.0;
+  }
+
   double get amount => rows.fold(0.0,(s,r)=> s + _n(r.qty)*_n(r.rate));
   double get cgst => amount*0.09; double get sgst => amount*0.09; double get total => amount+cgst+sgst;
 
@@ -455,7 +486,7 @@ class _InvoiceTabState extends State<InvoiceTab> {
               ),
 
               const SizedBox(height:8),
-              // Totals card (always visible, not under FABs)
+              // Totals card
               Card(child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Align(
@@ -478,7 +509,7 @@ class _InvoiceTabState extends State<InvoiceTab> {
 
   Widget _itemRow(int i){
     final r = rows[i];
-    double amt = _n(r.qty) * _n(r.rate);
+    final double amt = _n(r.qty) * _n(r.rate); // explicit double
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(children: [
@@ -635,8 +666,6 @@ class MaterialsTab extends StatelessWidget {
                     SizedBox(width: 120, child: TextField(controller:val, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText:"Cost (₹)"))),
                   ]),
                   trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: ()=> s.deleteCostPart(i)),
-                  onTap: (){}, // keep ripple
-                  subtitle: Text(""),
                   contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                   onLongPress: (){
                     final v = double.tryParse(val.text.trim()) ?? cp.value;
